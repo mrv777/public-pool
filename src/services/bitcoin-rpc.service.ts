@@ -2,11 +2,12 @@ import { Injectable, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { RPCClient } from 'rpc-bitcoin';
 import { BehaviorSubject, filter, shareReplay } from 'rxjs';
-import { RpcBlockService } from 'src/ORM/rpc-block/rpc-block.service';
+import { RpcBlockService } from '../ORM/rpc-block/rpc-block.service';
 import * as zmq from 'zeromq';
 
 import { IBlockTemplate } from '../models/bitcoin-rpc/IBlockTemplate';
 import { IMiningInfo } from '../models/bitcoin-rpc/IMiningInfo';
+import * as fs from 'node:fs';
 
 @Injectable()
 export class BitcoinRpcService implements OnModuleInit {
@@ -24,10 +25,19 @@ export class BitcoinRpcService implements OnModuleInit {
 
     async onModuleInit() {
         const url = this.configService.get('BITCOIN_RPC_URL');
-        const user = this.configService.get('BITCOIN_RPC_USER');
-        const pass = this.configService.get('BITCOIN_RPC_PASSWORD');
+        let user = this.configService.get('BITCOIN_RPC_USER');
+        let pass = this.configService.get('BITCOIN_RPC_PASSWORD');
         const port = parseInt(this.configService.get('BITCOIN_RPC_PORT'));
         const timeout = parseInt(this.configService.get('BITCOIN_RPC_TIMEOUT'));
+
+        const cookiefile = this.configService.get('BITCOIN_RPC_COOKIEFILE')
+
+        if (cookiefile != undefined && cookiefile != '') {
+            const cookie = fs.readFileSync(cookiefile).toString().split(':')
+
+            user = cookie[0]
+            pass = cookie[1]
+        }
 
         this.client = new RPCClient({ url, port, timeout, user, pass });
 
@@ -83,23 +93,26 @@ export class BitcoinRpcService implements OnModuleInit {
 
             const block = await this.rpcBlockService.getBlock(blockHeight);
             if (block != null && block.data != null) {
-                console.log('promise loop resolved');
+                console.log(`promise loop resolved, block height ${blockHeight}`);
                 return Promise.resolve(JSON.parse(block.data));
             }
-            console.log('promise loop');
+            console.log(`promise loop, block height ${blockHeight}`);
         }
     }
 
     public async getBlockTemplate(blockHeight: number): Promise<IBlockTemplate> {
         let result: IBlockTemplate;
         try {
-
             const block = await this.rpcBlockService.getBlock(blockHeight);
+            const completeBlock = block?.data != null;
 
-            if (block != null && block.data != null) {
+            // If the block has already been loaded, and the same instance is fetching the template again, we just need to refresh it.
+            if (completeBlock && block.lockedBy == process.env.NODE_APP_INSTANCE) {
+                result = await this.loadBlockTemplate(blockHeight);
+            }
+            else if (completeBlock) {
                 return Promise.resolve(JSON.parse(block.data));
-            } else if (block == null) {
-
+            } else if (!completeBlock) {
                 if (process.env.NODE_APP_INSTANCE != null) {
                     // There is a unique constraint on the block height so if another process tries to lock, it'll throw
                     try {
@@ -108,30 +121,36 @@ export class BitcoinRpcService implements OnModuleInit {
                         result = await this.waitForBlock(blockHeight);
                     }
                 }
-
-                result = await this.client.getblocktemplate({
-                    template_request: {
-                        rules: ['segwit'],
-                        mode: 'template',
-                        capabilities: ['serverlist', 'proposal']
-                    }
-                });
-                await this.rpcBlockService.saveBlock(blockHeight, JSON.stringify(result));
-
+                result = await this.loadBlockTemplate(blockHeight);
             } else {
                 //wait for block
                 result = await this.waitForBlock(blockHeight);
-
             }
-
-
-
         } catch (e) {
             console.error('Error getblocktemplate:', e.message);
             throw new Error('Error getblocktemplate');
         }
         console.log(`getblocktemplate tx count: ${result.transactions.length}`);
         return result;
+    }
+
+    private async loadBlockTemplate(blockHeight: number) {
+
+        let blockTemplate: IBlockTemplate;
+        while (blockTemplate == null) {
+            blockTemplate = await this.client.getblocktemplate({
+                template_request: {
+                    rules: ['segwit'],
+                    mode: 'template',
+                    capabilities: ['serverlist', 'proposal']
+                }
+            });
+        }
+
+
+        await this.rpcBlockService.saveBlock(blockHeight, JSON.stringify(blockTemplate));
+
+        return blockTemplate;
     }
 
     public async getMiningInfo(): Promise<IMiningInfo> {
@@ -164,4 +183,3 @@ export class BitcoinRpcService implements OnModuleInit {
 
     }
 }
-

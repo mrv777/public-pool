@@ -49,8 +49,9 @@ export class StratumV1Client {
     public extraNonceAndSessionId: string;
     public sessionStart: Date;
     public noFee: boolean;
-    public hashRate: number;
+    public hashRate: number = 0;
 
+    private buffer: string = '';
 
     constructor(
         public readonly socket: Socket,
@@ -64,21 +65,22 @@ export class StratumV1Client {
         private readonly addressSettingsService: AddressSettingsService
     ) {
 
-        this.socket.on('data', (data: Buffer) => {
-            data.toString()
-                .split('\n')
-                .filter(m => m.length > 0)
-                .forEach(async (m) => {
+        this.socket.on('data', async (data: Buffer) => {
+            this.buffer += data.toString();
+            let newlineIndex;
+            while ((newlineIndex = this.buffer.indexOf('\n')) !== -1) {
+                const message = this.buffer.slice(0, newlineIndex);
+                this.buffer = this.buffer.slice(newlineIndex + 1);
+                if (message.length > 0) {
                     try {
-                        await this.handleMessage(m);
+                        await this.handleMessage(message);
                     } catch (e) {
                         await this.socket.end();
                         console.error(e);
                     }
-                })
+                }
+            }
         });
-
-
     }
 
     public async destroy() {
@@ -92,7 +94,7 @@ export class StratumV1Client {
         }
 
         this.backgroundWork.forEach(work => {
-            clearInterval(work);
+            clearInterval(work as NodeJS.Timeout);
         });
     }
 
@@ -413,6 +415,7 @@ export class StratumV1Client {
         }
 
         const job = new MiningJob(
+            this.configService,
             network,
             this.stratumV1JobsService.getNextId(),
             payoutInformation,
@@ -583,8 +586,9 @@ export class StratumV1Client {
             await this.socket.write(data);
 
 
-            // we need to clear the jobs so that the difficulty set takes effect. Otherwise the different miner implementations can cause issues
             const jobTemplate = await firstValueFrom(this.stratumV1JobsService.newMiningJob$);
+            // we need to clear the jobs so that the difficulty set takes effect. Otherwise the different miner implementations can cause issues
+            jobTemplate.blockData.clearJobs = true;
             await this.sendNewMiningJob(jobTemplate);
 
         }
