@@ -65,19 +65,17 @@ export class StratumV1Client {
         private readonly addressSettingsService: AddressSettingsService
     ) {
 
-        this.socket.on('data', async (data: Buffer) => {
+        this.socket.on('data', (data: Buffer) => {
             this.buffer += data.toString();
             let newlineIndex;
             while ((newlineIndex = this.buffer.indexOf('\n')) !== -1) {
-                const message = this.buffer.slice(0, newlineIndex);
+                const message = this.buffer.slice(0, newlineIndex).trim();
                 this.buffer = this.buffer.slice(newlineIndex + 1);
                 if (message.length > 0) {
-                    try {
-                        await this.handleMessage(message);
-                    } catch (e) {
+                    this.handleMessage(message).catch(async (e) => {
+                        console.error('Error handling message:', e);
                         await this.socket.end();
-                        console.error(e);
-                    }
+                    });
                 }
             }
         });
