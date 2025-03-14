@@ -39,7 +39,7 @@ export class AppService implements OnModuleInit {
         // Set a reasonable WAL autocheckpoint
         await this.dataSource.query(`PRAGMA wal_autocheckpoint = 1000;`); // Default is 1000
 
-        if (process.env.ENABLE_SOLO == 'true' && (process.env.NODE_APP_INSTANCE == null || process.env.NODE_APP_INSTANCE == '0')) {
+        if (process.env.NODE_APP_INSTANCE == null || process.env.NODE_APP_INSTANCE == '0') {
 
             setInterval(async () => {
                 await this.deleteOldStatistics();

@@ -7,6 +7,7 @@ import * as crypto from 'crypto';
 import { Socket } from 'net';
 import { firstValueFrom, Subscription } from 'rxjs';
 import { clearInterval } from 'timers';
+import { createInterface } from 'readline';
 
 import { AddressSettingsService } from '../ORM/address-settings/address-settings.service';
 import { BlocksService } from '../ORM/blocks/blocks.service';
@@ -67,17 +68,19 @@ export class StratumV1Client {
 
         this.socket.on('data', (data: Buffer) => {
             this.buffer += data.toString();
-            let newlineIndex;
-            while ((newlineIndex = this.buffer.indexOf('\n')) !== -1) {
-                const message = this.buffer.slice(0, newlineIndex).trim();
-                this.buffer = this.buffer.slice(newlineIndex + 1);
-                if (message.length > 0) {
-                    this.handleMessage(message).catch(async (e) => {
-                        console.error('Error handling message:', e);
+            let lines = this.buffer.split('\n');
+            this.buffer = lines.pop() || ''; // Save the last part of the data (incomplete line) to the buffer
+
+            lines
+                .filter(m => m.length > 0)
+                .forEach(async (m) => {
+                    try {
+                        await this.handleMessage(m);
+                    } catch (e) {
                         await this.socket.end();
-                    });
-                }
-            }
+                        console.error(e);
+                    }
+                });
         });
     }
 
@@ -310,7 +313,7 @@ export class StratumV1Client {
 
 
                 } else {
-                    console.error('Mining Submit validation error');
+                    console.log('Mining Submit validation error');
                     const err = new StratumErrorMessage(
                         miningSubmitMessage.id,
                         eStratumErrorCode.OtherUnknown,
@@ -582,7 +585,6 @@ export class StratumV1Client {
 
 
             await this.socket.write(data);
-
 
             const jobTemplate = await firstValueFrom(this.stratumV1JobsService.newMiningJob$);
             // we need to clear the jobs so that the difficulty set takes effect. Otherwise the different miner implementations can cause issues
