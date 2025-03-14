@@ -42,6 +42,7 @@ export class StratumV1JobsService {
     ) {
 
         this.newMiningJob$ = combineLatest([this.bitcoinRpcService.newBlock$, interval(60000).pipe(delay(this.delay), startWith(-1))]).pipe(
+            filter(([miningInfo, _]) => miningInfo !== null),  // Add this line
             switchMap(([miningInfo, interval]) => {
                 return from(this.bitcoinRpcService.getBlockTemplate(miningInfo.blocks)).pipe(map((blockTemplate) => {
                     return {

@@ -82,8 +82,6 @@ export class StratumV1Client {
                     }
                 });
         });
-
-
     }
 
     public async destroy() {
@@ -97,7 +95,7 @@ export class StratumV1Client {
         }
 
         this.backgroundWork.forEach(work => {
-            clearInterval(work);
+            clearInterval(work as NodeJS.Timeout);
         });
     }
 

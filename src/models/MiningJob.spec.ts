@@ -93,7 +93,7 @@ describe('MiningJob', () => {
             } as IJobTemplate;
         });
         it('should create a new MiningJob if POOL_IDENTIFIER is not set and use the default', () => {
-            const expectedMiningIdentifier = 'Public-Pool';
+            const expectedMiningIdentifier = 'OMB-Pool';
             expect(jobTemplate.block).toBeDefined();
             const miningJob = new MiningJob(configService, bitcoinjs.networks.testnet, '1', payoutInformation, jobTemplate);
 

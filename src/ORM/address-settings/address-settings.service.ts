@@ -33,7 +33,7 @@ export class AddressSettingsService {
 
     public async getHighScores() {
         return await this.addressSettingsRepository.createQueryBuilder()
-            .select('"updatedAt", "bestDifficulty", "bestDifficultyUserAgent"')
+            .select('"updatedAt", "bestDifficulty", "bestDifficultyUserAgent", SUBSTRING(address, -6) as "truncatedAddress"')
             .orderBy('"bestDifficulty"', 'DESC')
             .limit(10)
             .execute();
